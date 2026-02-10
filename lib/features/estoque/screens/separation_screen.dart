@@ -160,31 +160,113 @@ class _SeparationScreenState extends State<SeparationScreen> {
     return value.toStringAsFixed(2).replaceAll('.', ',');
   }
 
+  Future<String?> _showExcessDialog(BuildContext context, double excessQty) async {
+    String? selectedReason;
+    final TextEditingController otherReasonController = TextEditingController();
+    final reasons = [
+      'Peça perdida na linha',
+      'Item solicitado a mais',
+      'Estrutura errada',
+      'Outro'
+    ];
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Justificativa de Excesso'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Você está pagando ${formatNumber(excessQty)} acima do solicitado.\nDeseja confirmar a operação?',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: 'Motivo',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      items: reasons.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                      onChanged: (v) => setState(() => selectedReason = v),
+                    ),
+                    if (selectedReason == 'Outro') ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: otherReasonController,
+                        decoration: const InputDecoration(
+                          labelText: 'Detalhe o motivo',
+                          border: OutlineInputBorder(),
+                        ),
+                      )
+                    ]
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('CANCELAR'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (selectedReason == null) return;
+                    String finalReason = selectedReason!;
+                    if (selectedReason == 'Outro') {
+                      if (otherReasonController.text.trim().isEmpty) return;
+                      finalReason = "Outro: ${otherReasonController.text.trim()}";
+                    }
+                    Navigator.pop(context, finalReason);
+                  },
+                  child: const Text('CONFIRMAR'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void showSeparationDialog(Map<String, dynamic> item, Color cardColor, Color textColor, Color subTextColor, Color flashYellow, bool isDarkMode) {
-    final remaining = (item['qtdTotal'] as num) - (item['qtdSeparada'] as num);
+    final double qtdSeparadaAtual = (item['qtdSeparada'] as num).toDouble();
+    final double qtdTotal = (item['qtdTotal'] as num).toDouble();
+    final double remaining = qtdTotal - qtdSeparadaAtual;
     final TextEditingController qtdController = TextEditingController();
     
     final bool controlsAddress = item['controla_endereco'] ?? true;
     final List<dynamic> addresses = item['lista_enderecos'] ?? [];
-    
-    // Define texto inicial do endereço
-    String initialAddress = '';
-    if (controlsAddress) {
-      initialAddress = addresses.isNotEmpty ? addresses.first['endereco'] : '';
-    }
-
-    // Controller para o endereço, permitindo edição
-    final TextEditingController addressController = TextEditingController(text: initialAddress);
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
+        bool localIsEstorno = false;
+        
+        // Lista de endereços para o Dropdown
+        List<String> availableAddresses = [];
+        if (addresses.isNotEmpty) {
+          availableAddresses = addresses.map((e) => e['endereco'].toString()).toList();
+        } else {
+          availableAddresses = ['RECEBIMENTO'];
+        }
+        
+        String? selectedAddress = availableAddresses.isNotEmpty ? availableAddresses.first : null;
+
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
           backgroundColor: cardColor,
           titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
           contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
           actionsPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-          title: Text("Separar Item", style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.bold)),
+          title: Text(localIsEstorno ? "Estornar Item" : "Separar Item", style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -194,59 +276,11 @@ class _SeparationScreenState extends State<SeparationScreen> {
                 
                 // Seção de Endereços (Apenas se controlar endereço)
                 if (controlsAddress) ...[
-                  if (addresses.isNotEmpty) ...[
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("Endereços Disponíveis (01):", style: TextStyle(color: subTextColor, fontSize: 12)),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: addresses.map((addr) {
-                        return InkWell(
-                          onTap: () => addressController.text = addr['endereco'],
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: subTextColor),
-                              borderRadius: BorderRadius.circular(12),
-                              color: cardColor,
-                            ),
-                            child: Text(
-                              "${addr['endereco']} (${formatNumber(addr['saldo'])})",
-                              style: TextStyle(fontSize: 11, color: textColor),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 12),
-                  ] else ...[
-                     Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("Sugestão:", style: TextStyle(color: subTextColor, fontSize: 12)),
-                    ),
-                    const SizedBox(height: 4),
-                    InkWell(
-                      onTap: () => addressController.text = 'RECEBIMENTO',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.orange),
-                          borderRadius: BorderRadius.circular(12),
-                          color: cardColor,
-                        ),
-                        child: Text("RECEBIMENTO", style: TextStyle(fontSize: 11, color: textColor)),
-                      ),
-                    ),
-                     const SizedBox(height: 12),
-                  ],
-
-                  // Campo de Endereço Editável
-                  TextField(
-                    controller: addressController,
-                    style: TextStyle(color: textColor),
+                  DropdownButtonFormField<String>(
+                    value: selectedAddress,
+                    isExpanded: true,
+                    dropdownColor: cardColor,
+                    style: TextStyle(color: textColor, fontSize: 16),
                     decoration: InputDecoration(
                       labelText: "Endereço de Retirada",
                       labelStyle: TextStyle(color: subTextColor),
@@ -262,11 +296,26 @@ class _SeparationScreenState extends State<SeparationScreen> {
                             MaterialPageRoute(builder: (context) => const ScannerPage()),
                           );
                           if (result is String && result != '-1' && context.mounted) {
-                            addressController.text = result;
+                            setStateDialog(() {
+                              if (!availableAddresses.contains(result)) {
+                                availableAddresses.add(result);
+                              }
+                              selectedAddress = result;
+                            });
                           }
                         },
                       ),
                     ),
+                    items: availableAddresses.map((addr) {
+                      final matches = addresses.where((e) => e['endereco'] == addr);
+                      final info = matches.isNotEmpty ? matches.first : null;
+                      final text = info != null ? "$addr (${formatNumber(info['saldo'])})" : addr;
+                      return DropdownMenuItem(
+                        value: addr,
+                        child: Text(text),
+                      );
+                    }).toList(),
+                    onChanged: (val) => setStateDialog(() => selectedAddress = val),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -277,7 +326,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                     Expanded(
                       child: InputDecorator(
                         decoration: InputDecoration(
-                          labelText: "A SEPARAR",
+                          labelText: localIsEstorno ? "DISPONÍVEL" : "A SEPARAR",
                           labelStyle: TextStyle(color: subTextColor),
                           isDense: true,
                           border: const OutlineInputBorder(),
@@ -285,7 +334,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                         ),
                         textAlign: TextAlign.center,
                         child: Text(
-                          formatNumber(remaining),
+                          formatNumber(localIsEstorno ? qtdSeparadaAtual : remaining),
                           style: TextStyle(color: textColor, fontSize: 20),
                           textAlign: TextAlign.center,
                         ),
@@ -299,7 +348,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                         style: TextStyle(color: textColor, fontSize: 20),
                         textAlign: TextAlign.center,
                         decoration: InputDecoration(
-                          labelText: "SEPARADO",
+                          labelText: localIsEstorno ? "QTD ESTORNO" : "SEPARADO",
                           labelStyle: TextStyle(color: subTextColor),
                           isDense: true,
                           border: const OutlineInputBorder(),
@@ -308,6 +357,26 @@ class _SeparationScreenState extends State<SeparationScreen> {
                         ),
                         autofocus: true,
                       ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      localIsEstorno ? "MODO ESTORNO" : "MODO SEPARAÇÃO",
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: localIsEstorno ? Colors.red : textColor,
+                      ),
+                    ),
+                    Switch(
+                      value: localIsEstorno,
+                      activeColor: Colors.red,
+                      inactiveThumbColor: flashYellow,
+                      onChanged: (val) => setStateDialog(() => localIsEstorno = val),
                     ),
                   ],
                 ),
@@ -327,32 +396,100 @@ class _SeparationScreenState extends State<SeparationScreen> {
                   onPressed: () async {
                     final qtdSeparadaInput = double.tryParse(qtdController.text.replaceAll(',', '.')) ?? 0;
                     
-                    if (qtdSeparadaInput == 0) {
+                    if (qtdSeparadaInput <= 0) {
                       Navigator.pop(context);
                       return;
                     }
 
                     final user = _supabase.auth.currentUser;
-
                     if (user == null) return;
-                    
-                    // Atualiza no banco (Inserindo no Log para disparar Trigger)
+
                     String enderecoFinal = '';
                     if (controlsAddress) {
-                      enderecoFinal = addressController.text.trim().isEmpty ? 'RECEBIMENTO' : addressController.text.trim();
+                      enderecoFinal = selectedAddress ?? 'RECEBIMENTO';
                     }
-                    // Se não controla endereço, envia vazio
 
-                    try {
+                    if (localIsEstorno) {
+                      if (qtdSeparadaInput > qtdSeparadaAtual) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Quantidade de estorno maior que a separada!')),
+                        );
+                        return;
+                      }
+
                       await _supabase.from('app_log_separacao').insert({
                         'id_lista': item['id'],
                         'user_id': user.id,
                         'qtd_movimentada': qtdSeparadaInput,
                         'endereco_retirada_real': enderecoFinal,
                         'armazem_destino': item['armazem_destino'] ?? '',
-                        'tipo_movimento': 'SEPARACAO',
+                        'tipo_movimento': 'ESTORNO',
                         'data_hora': DateTime.now().toIso8601String(),
+                        'observacao': 'Estorno via App',
                       });
+
+                      _loadData();
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estorno realizado!')));
+                      }
+                      return;
+                    }
+
+                    // Lógica de Excesso
+                    final currentSeparated = qtdSeparadaAtual;
+                    final totalRequired = qtdTotal;
+                    // final remaining já calculado acima
+                    
+                    // O quanto falta para completar (se for negativo, é 0)
+                    final needed = remaining > 0 ? remaining : 0.0;
+
+                    double normalQty = 0.0;
+                    double excessQty = 0.0;
+
+                    if (qtdSeparadaInput > needed) {
+                      normalQty = needed;
+                      excessQty = qtdSeparadaInput - needed;
+                    } else {
+                      normalQty = qtdSeparadaInput;
+                      excessQty = 0.0;
+                    }
+
+                    String? justification;
+                    if (excessQty > 0) {
+                      justification = await _showExcessDialog(context, excessQty);
+                      if (justification == null) return; // Cancelou a justificativa
+                    }
+
+                    try {
+                      final timestamp = DateTime.now().toIso8601String();
+                      
+                      // 1. Log Normal (se houver)
+                      if (normalQty > 0) {
+                        await _supabase.from('app_log_separacao').insert({
+                          'id_lista': item['id'],
+                          'user_id': user.id,
+                          'qtd_movimentada': normalQty,
+                          'endereco_retirada_real': enderecoFinal,
+                          'armazem_destino': item['armazem_destino'] ?? '',
+                          'tipo_movimento': 'SEPARACAO',
+                          'data_hora': timestamp,
+                        });
+                      }
+
+                      // 2. Log Excedente (se houver)
+                      if (excessQty > 0) {
+                         await _supabase.from('app_log_separacao').insert({
+                          'id_lista': item['id'],
+                          'user_id': user.id,
+                          'qtd_movimentada': excessQty,
+                          'endereco_retirada_real': enderecoFinal,
+                          'armazem_destino': item['armazem_destino'] ?? '',
+                          'tipo_movimento': 'SEPARACAO',
+                          'data_hora': timestamp, 
+                          'observacao': "Excesso: $justification",
+                        });
+                      }
                       
                       // Recarrega a lista
                       _loadData();
@@ -380,12 +517,14 @@ class _SeparationScreenState extends State<SeparationScreen> {
                       }
                     }
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: flashYellow, foregroundColor: Colors.black),
-                  child: const Text("CONFIRMAR"),
+                  style: ElevatedButton.styleFrom(backgroundColor: localIsEstorno ? Colors.red : flashYellow, foregroundColor: localIsEstorno ? Colors.white : Colors.black),
+                  child: Text(localIsEstorno ? "ESTORNAR" : "CONFIRMAR"),
                 ),
               ],
-            )
+            ),
           ],
+        );
+          },
         );
       },
     );
