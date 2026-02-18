@@ -17,6 +17,7 @@ class SeparationScreen extends StatefulWidget {
 
 class _SeparationScreenState extends State<SeparationScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final _supabase = SupabaseService.client;
   
   // Estado para controle dos dados e filtro
@@ -29,6 +30,13 @@ class _SeparationScreenState extends State<SeparationScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -107,6 +115,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
           'armazem_destino': item['armazem_destino'],
           'lista_enderecos': allLocs,
           'controla_endereco': controlsAddress,
+          'tipo_item': item['tipo_item'],
         };
       }).toList();
 
@@ -233,6 +242,141 @@ class _SeparationScreenState extends State<SeparationScreen> {
         );
       },
     );
+  }
+
+  Future<void> _showSubstituteDialog(Map<String, dynamic> item) async {
+    final currentCode = item['componente'];
+    final tipoItem = item['tipo_item'];
+    
+    // Define a função RPC baseada no tipo
+    final functionName = (tipoItem == 'METÁLICO') 
+        ? 'fn_buscar_familia_miolo' 
+        : 'fn_buscar_familia_sufixo';
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+    );
+
+    try {
+      final List<dynamic> response = await _supabase.rpc(functionName, params: {'p_codigo': currentCode});
+      
+      if (mounted) {
+        Navigator.pop(context); // Fecha o loading
+        
+        if (response.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nenhum substituto encontrado.')),
+          );
+          return;
+        }
+
+        showDialog(
+          context: context,
+          builder: (ctx) {
+            // Variáveis locais para o Dialog (StatefulBuilder)
+            List<dynamic> filteredList = List.from(response);
+            final TextEditingController dialogSearchController = TextEditingController();
+
+            return StatefulBuilder(
+              builder: (context, setStateDialog) {
+                return AlertDialog(
+                  title: Text("Trocar $currentCode", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), // Fonte menor
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    height: 400, // Altura fixa para caber a lista
+                    child: Column(
+                      children: [
+                        CustomSearchField(
+                          controller: dialogSearchController,
+                          hintText: 'Buscar substituto...',
+                          autofocus: true,
+                          onChanged: (query) {
+                            setStateDialog(() {
+                              if (query.isEmpty) {
+                                filteredList = List.from(response);
+                              } else {
+                                filteredList = response.where((option) {
+                                  return option['codigo'].toString().toLowerCase().contains(query.toLowerCase()) ||
+                                         (option['descricao'] ?? '').toString().toLowerCase().contains(query.toLowerCase());
+                                }).toList();
+                              }
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: filteredList.length,
+                            separatorBuilder: (_, __) => const Divider(),
+                            itemBuilder: (ctx, index) {
+                              final prod = filteredList[index];
+                              return ListTile(
+                                title: Text(prod['codigo'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text(prod['descricao'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                onTap: () async {
+                                  Navigator.pop(ctx);
+                                  await _replaceProduct(item['id'], prod['codigo']);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text("CANCELAR"),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Fecha o loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao buscar substitutos: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _replaceProduct(String listId, String newCode) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700))),
+    );
+
+    try {
+      await _supabase
+          .from('app_lista_separacao')
+          .update({'produto': newCode})
+          .eq('id', listId);
+      
+      await _loadData();
+      
+      if (mounted) {
+        Navigator.pop(context); // Fecha o loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Item trocado para $newCode')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Fecha o loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao trocar produto: $e')),
+        );
+      }
+    }
   }
 
   void showSeparationDialog(Map<String, dynamic> item, Color cardColor, Color textColor, Color subTextColor, Color flashYellow, bool isDarkMode) {
@@ -426,6 +570,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                         'tipo_movimento': 'ESTORNO',
                         'data_hora': DateTime.now().toIso8601String(),
                         'observacao': 'Estorno via App',
+                        'produto': item['componente'],
                       });
 
                       _loadData();
@@ -474,6 +619,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                           'armazem_destino': item['armazem_destino'] ?? '',
                           'tipo_movimento': 'SEPARACAO',
                           'data_hora': timestamp,
+                          'produto': item['componente'],
                         });
                       }
 
@@ -488,6 +634,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                           'tipo_movimento': 'SEPARACAO',
                           'data_hora': timestamp, 
                           'observacao': "Excesso: $justification",
+                          'produto': item['componente'],
                         });
                       }
                       
@@ -575,6 +722,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator(color: Color(0xFFFFD700)))
               : ListView(
+                  controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   children: [
                     // Lista de Pendentes (e Erros)
@@ -585,6 +733,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                           textColor: textColor,
                           subTextColor: subTextColor,
                           onTap: () => showSeparationDialog(item, cardColor, textColor, subTextColor ?? Colors.grey, flashYellow, isDarkMode),
+                          onSwap: () => _showSubstituteDialog(item),
                           formatNumber: formatNumber,
                         )),
 
@@ -623,6 +772,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                               textColor: textColor,
                               subTextColor: subTextColor,
                               onTap: () => showSeparationDialog(item, cardColor, textColor, subTextColor ?? Colors.grey, flashYellow, isDarkMode),
+                              onSwap: () => _showSubstituteDialog(item),
                               formatNumber: formatNumber,
                             )),
                     ],
@@ -642,6 +792,7 @@ class SeparationItemCard extends StatelessWidget {
   final Color textColor;
   final Color? subTextColor;
   final VoidCallback onTap;
+  final VoidCallback? onSwap;
   final String Function(num) formatNumber;
 
   const SeparationItemCard({
@@ -652,6 +803,7 @@ class SeparationItemCard extends StatelessWidget {
     required this.textColor,
     required this.subTextColor,
     required this.onTap,
+    this.onSwap,
     required this.formatNumber,
   });
 
@@ -681,9 +833,23 @@ class SeparationItemCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Text(
-                      item['componente'],
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: flashYellow),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item['componente'],
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: flashYellow),
+                          ),
+                        ),
+                        if (onSwap != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: InkWell(
+                              onTap: onSwap,
+                              child: Icon(Icons.swap_horiz, color: subTextColor, size: 20),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   if (item['isSub'])
