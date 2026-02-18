@@ -1,10 +1,10 @@
 # Flash Picker
 
-O `flash_picker` é um aplicativo de uso empresarial desenvolvido em Flutter, projetado para otimizar e agilizar o processo de coleta ("picking") de itens em ambientes de logística e manufatura, como almoxarifados, centros de distribuição e linhas de produção.
+O `flash_app` é um aplicativo modular desenvolvido em Flutter para a **Flash Engenharia**, projetado para otimizar e agilizar processos de logística e manufatura.
 
 ## Visão Geral
 
-O aplicativo foi concebido para se integrar a sistemas de gestão (ERPs), permitindo que funcionários recebam ordens de serviço, localizem e coletem itens de forma eficiente, e atualizem o status do inventário em tempo real. O nome "Flash" remete à rapidez e eficiência esperadas no processo.
+O aplicativo atua como um facilitador para o ERP **Protheus**, servindo como uma interface intuitiva para o operador no chão de fábrica. Seu principal objetivo é capturar informações da operação e transmiti-las ao sistema de gestão de forma limpa, padronizada e em tempo real, garantindo a integridade dos dados e a eficiência do processo.
 
 ## Funcionalidades
 
@@ -59,7 +59,6 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 
 **Função:** O Gatilho de Produção (Lote).  
 **Atualização:** Script Python (Monitoramento PCP) ou Input Manual.  
-**Índices:** `idx_pmp_cod_estrutura` (Para busca rápida no Oracle).  
 
 | Coluna | Tipo | Descrição |
 | :--- | :--- | :--- |
@@ -72,6 +71,10 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 | **status** | `VARCHAR(20)` | Controle de fluxo: `AGUARDANDO`, `MONTADO` (Lista Gerada), `APONTADO` (Finalizado). |
 | **qtd_lote_anterior** | `INTEGER` | Histórico para detecção de mudança de quantidade (Versionamento). |
 | **flag_recalculo** | `BOOLEAN` | `TRUE` força o Robô a regerar a lista mesmo se nada mudou na engenharia. |
+
+**Índices:**
+
+* `idx_pmp_cod_estrutura` (Para busca rápida no Oracle).
 
 ---
 
@@ -136,15 +139,15 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 
 ### 6. 🕵️‍♂️ Tabela: `app_log_separacao`
 
-**Função:** Rastreabilidade da Separação (Fila de Integração com ERP).  
-**Atualização:** App (Insere Log) e Robô Python (Processa Integração).  
-**Trigger:** `trg_calcula_separacao` (Alimenta `qtd_separada`, `qtd_transferida` e `status_separacao`).  
+**Função:** Rastreabilidade da Separação (Fila de Integração com ERP).  
+**Atualização:** App (Insere Log) e Robô Python (Processa Integração).  
 
 | Coluna | Tipo | Descrição |
-| :--- | :--- | :--- |
+| --- | --- | --- |
 | **id** (PK) | `UUID` | Identificador único (Gerado Automático). |
-| **id_lista** (FK) | `UUID` | **Obrigatório:** Vínculo com a linha da lista. |
+| **id_lista** (FK) | `UUID` | **Obrigatório:** Vínculo com a linha da lista original. |
 | **user_id** (FK) | `UUID` | **Obrigatório:** Quem separou. |
+| **produto** | `VARCHAR` | **Vital (Alternativos):** Código exato do produto físico separado. Essencial quando o operador troca o item original por um similar. |
 | **data_hora** | `TIMESTAMP` | Momento exato do Bip (Default: `NOW()`). |
 | **qtd_movimentada** | `DECIMAL` | Quanto separou. |
 | **tipo_movimento** | `VARCHAR` | **Vital:** `SEPARACAO` (Soma) ou `ESTORNO` (Subtrai). |
@@ -154,6 +157,10 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 | **status_erp** | `VARCHAR` | **Controle:** `PENDENTE` (Default), `SUCESSO`, `ERRO`. |
 | **mensagem_erp** | `TEXT` | Log de retorno do Protheus (em caso de falha). |
 | **data_processamento** | `TIMESTAMP` | Quando a integração ocorreu. |
+
+**Triggers:**
+
+* `trg_calcula_separacao` (Alimenta `qtd_separada`, `qtd_transferida` e `status_separacao`).
 
 ---
 
@@ -177,7 +184,6 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 
 **Função:** Rastreabilidade da Entrega na Linha (Comprovante).  
 **Atualização:** App (No momento da Entrega/Foto).  
-**Trigger:** `trg_calcula_abastecimento` (Alimenta `qtd_abastecida` e `status_abastecimento`).  
 
 | Coluna | Tipo | Descrição |
 | :--- | :--- | :--- |
@@ -191,6 +197,10 @@ Esta seção apresenta a **Documentação Técnica Oficial** do banco de dados, 
 | **obs** | `TEXT` | Observações opcionais. |
 | **foto_url** | `TEXT` | Link da foto (Supabase Storage). |
 | **assinatura_url** | `TEXT` | Link da assinatura (Se Custo > 500). |
+
+**Triggers:**
+
+* `trg_calcula_abastecimento` (Alimenta `qtd_abastecida` e `status_abastecimento`).
 
 ---
 
@@ -414,3 +424,19 @@ O banco possui duas inteligências ("cérebros") que mantêm a Tabela 4 atualiza
 * **Ação:**
 * Calcula `qtd_abastecida` (Soma Entregas - Estornos).
 * Atualiza `status_abastecimento` (`AGUARDANDO` -> `PARCIAL` -> `ENTREGUE`).
+
+--
+
+### 18. 🔍 Funções de Busca (Família de Produtos)
+
+Conjunto de funções RPC projetadas para localizar variações de produtos com base na estrutura inteligente do código (Pattern Matching).
+
+#### A. `fn_buscar_familia_sufixo(p_codigo)`
+
+**Objetivo:** Retorna a lista de produtos que compartilham o mesmo radical, ignorando a variação final (remove os 2 últimos dígitos). Útil para buscar itens da mesma linha com pequenas variações.
+**Retorno:** Tabela (`SETOF app_produtos`) com todos os campos: `codigo`, `tat`, `descricao`, `unidade`, `custo_padrao`, `updated_at`.
+
+#### B. `fn_buscar_familia_miolo(p_codigo)`
+
+**Objetivo:** Retorna a lista de produtos que possuem o mesmo "núcleo", ignorando o prefixo (2 primeiros dígitos) e o sufixo (4 últimos dígitos). Ideal para localizar o mesmo produto em diferentes filiais ou grupos.
+**Retorno:** Tabela (`SETOF app_produtos`) com todos os campos: `codigo`, `tat`, `descricao`, `unidade`, `custo_padrao`, `updated_at`.# app-flash
