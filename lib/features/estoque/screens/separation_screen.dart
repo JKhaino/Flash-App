@@ -580,12 +580,7 @@ class _SeparationScreenState extends State<SeparationScreen> {
                       }
                       return;
                     }
-
-                    // Lógica de Excesso
-                    final currentSeparated = qtdSeparadaAtual;
-                    final totalRequired = qtdTotal;
-                    // final remaining já calculado acima
-                    
+                  
                     // O quanto falta para completar (se for negativo, é 0)
                     final needed = remaining > 0 ? remaining : 0.0;
 

@@ -1,0 +1,47 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------
+      # 🆕 NOVO PASSO: CRIAR O .ENV NA MÁQUINA DO GITHUB
+      # -------------------------------------------------------
+      - name: Criar arquivo .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+        # O comando 'echo' escreve o valor do segredo dentro de um arquivo .env real
+        # Se seu app usa outro nome (ex: .env.prod), mude o nome ali em cima.
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      - name: Build Web (Release)
+        run: flutter build web --release --web-renderer html
+        # O Flutter vai ler o .env que acabamos de criar e "cozinhar" as chaves dentro do JS.
+
+      - name: Publicar no Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: app-flash 
+          directory: build/web
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
