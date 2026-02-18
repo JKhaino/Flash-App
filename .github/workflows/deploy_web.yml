@@ -34,7 +34,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web (Release)
-        run: flutter build web --release --web-renderer html
+        run: flutter build web --release
         # O Flutter vai ler o .env que acabamos de criar e "cozinhar" as chaves dentro do JS.
 
       - name: Publicar no Cloudflare Pages
