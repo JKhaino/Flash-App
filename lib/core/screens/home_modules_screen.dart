@@ -106,73 +106,89 @@ class HomeModulesScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, // 2 colunas
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.1,
-          ),
-          itemCount: modules.length,
-          itemBuilder: (context, index) {
-            final module = modules[index];
-            final isActive = module['active'] as bool;
-            final onTap = module['onTap'] as VoidCallback?;
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: LayoutBuilder(builder: (context, constraints) {
+              // Define colunas baseado na largura disponível
+              int crossAxisCount = 2;
+              if (constraints.maxWidth > 600) crossAxisCount = 3;
+              if (constraints.maxWidth > 900) crossAxisCount = 4;
 
-            return Material(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(16),
-              elevation: 2,
-              child: InkWell(
-                onTap: isActive 
-                    ? onTap 
-                    : () => _showComingSoon(context, module['name'] as String),
-                borderRadius: BorderRadius.circular(16),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isActive 
-                            ? flashYellow.withOpacity(0.2) 
-                            : Colors.grey.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        module['icon'] as IconData,
-                        size: 32,
-                        color: isActive 
-                            ? flashYellow 
-                            : (isDarkMode ? Colors.grey[700] : Colors.grey[400]),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      module['name'] as String,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                        color: isActive 
-                            ? (isDarkMode ? Colors.white : Colors.black)
-                            : Colors.grey,
-                      ),
-                    ),
-                    if (!isActive)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          "Em breve",
-                          style: TextStyle(fontSize: 10, color: Colors.grey[500]),
-                        ),
-                      ),
-                  ],
+              return GridView.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 1.1,
                 ),
-              ),
-            );
-          },
+                itemCount: modules.length,
+                itemBuilder: (context, index) {
+                  final module = modules[index];
+                  final isActive = module['active'] as bool;
+                  final onTap = module['onTap'] as VoidCallback?;
+
+                  return Material(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    elevation: 2,
+                    child: InkWell(
+                      onTap: isActive
+                          ? onTap
+                          : () =>
+                              _showComingSoon(context, module['name'] as String),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? flashYellow.withOpacity(0.2)
+                                  : Colors.grey.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              module['icon'] as IconData,
+                              size: 32,
+                              color: isActive
+                                  ? flashYellow
+                                  : (isDarkMode
+                                      ? Colors.grey[700]
+                                      : Colors.grey[400]),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            module['name'] as String,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: isActive
+                                  ? (isDarkMode ? Colors.white : Colors.black)
+                                  : Colors.grey,
+                            ),
+                          ),
+                          if (!isActive)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                "Em breve",
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.grey[500]),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            }),
+          ),
         ),
       ),
     );

@@ -29,7 +29,7 @@ class _FlashAppState extends State<FlashApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flash App',
+      title: 'Flash Engenharia',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
